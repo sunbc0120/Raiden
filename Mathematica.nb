@@ -1,0 +1,234 @@
+ClearAll["Global`*"]
+ClearSystemCache[]
+RemoveScheduledTask[ScheduledTasks[]];
+DynamicModule[
+  {
+    	army = {},
+    	bullet = {},
+    	missle = {},
+    	direct = {},
+    	reach = 0,
+    	score = 0,
+    
+        toClean,
+    	num = 5,
+    	pos,
+    	(*reach=0,*)
+    	reachNum = 10,
+    
+    	RestartAll,
+    	pausing = True,
+    	stop = True,
+    
+    	rand,
+    	least,
+    	launcher,
+    	target,
+    
+    	hit,
+    	explosion = 10,
+    	crash = 10,
+    	
+    	bulletSpeed = .6,
+    	enermySpeed = .1,
+    
+    	jet = Graphics[
+        		{Darker@Blue, Polygon[{{0, 0}, {1, 0}, {1, .1}, {0, .1}}],
+          		Polygon[{{0.5, 2}, {.4, .6}, {.6, .6}}],
+          		Polygon[{{-1, 1}, {2, 1}, {.5, 1.2}}],
+          		Thickness -> .02, Arrow[{{.2, .1}, {.2, 1.5}}],
+          		Arrow[{{.8, .1}, {.8, 1.5}}]}, ImageSize -> Tiny],
+    
+    	enermy = Graphics[
+        		{Gray, Polygon[{{.1, 2}, {.9, 2}, {.9, 1.9}, {.1, 1.9}}],
+          		Polygon[{{.5, 0}, {.4, 1.9}, {.6, 1.9}}],
+          		Polygon[{{-1, 1.1}, {2, 1.1}, {.5, .9}}],
+          		Thickness -> .02, Arrow[{{.2, 1.4}, {.2, 0.6}}],
+          		Arrow[{{.8, 1.4}, {.8, .6}}]}, ImageSize -> Tiny]
+    },
+  	least[bullets_, 
+   army_] :=(*Get the local (pseduo) minimum distance between bullets \
+and enermy army*)
+    		Module[{len1 = Length@bullets, len2 = Length@army, frontList, 
+    postList, dist, loc, short, long, locShort, locLong},
+      			If[len1 >= len2, frontList = bullets; postList = army, 
+    frontList = army; postList = bullets];
+      			dist = (EuclideanDistance @@@ 
+      Partition[Riffle[frontList, postList], 2, 1]);
+      			loc = First@Flatten@Position[dist, Min[dist], 1(*,1*)];
+      			locShort = 
+    Mod[Mod[loc, 2] + Quotient[loc, 2], Length@postList, 1];
+      			locLong = Quotient[loc, 2] + 1;
+      			short = postList[[locShort]];
+      			long = frontList[[locLong]];
+      			Return[
+    If[len1 >= len2, {locShort, locLong, Min@dist}, {locLong, 
+      locShort, Min@dist}]]
+      		];
+  
+  	rand[] := {RandomReal[{-30, 40}], 
+   160};(*Randomly generate enermy flights*)
+  	
+  	RestartAll[] := (RemoveScheduledTask[ScheduledTasks[]];
+      	RunScheduledTask[
+        		If[! pausing,
+          
+          		If[(*Randomly generate enermy flights*)
+            			MemberQ[
+              				RandomChoice[
+                					{(Length@army)/num, 
+          1 - (Length@army)/num} -> {False, True},
+                					1
+                				],
+              			True],
+            		AppendTo[army, {enermy, rand[]}]
+            		];
+          		
+     If[(*Handle the situate of collision between the jet and enermy \
+army*)
+            			MemberQ[
+              				Norm[
+                      					#[[2]] - MousePosition["Graphics", {0, 0}]
+                      				] < crash & /@ army,
+              			True],
+            			(*Speak["Bang"];*)
+            			RemoveScheduledTask[ScheduledTasks[]];
+            			
+      CreateDialog[{TextCell["You Crash!", "Title"], 
+        Column@{Row@{"Score: ", score}, Row@{"Passed:", reach}}, 
+        DefaultButton[]}]
+            		];
+          		
+     If[(*Handle the situate of enermy army be hit by our bullets*)
+            			Length@army > 0 \[And] Length@bullet > 0,
+            			hit = least[bullet, army[[All, 2]]];
+            			(*Print[hit];*)
+            			If[
+              				Last@hit < explosion,
+              				score += 10;
+              				army = Delete[army, First@hit];
+              				bullet = Delete[bullet, hit[[2]] ]
+              			]
+            		];
+          		If[(*enermy gives out missles*)
+            			Length@army > 0 && RandomReal[] > .05,
+            			launcher = RandomChoice@army[[All, 2]];
+            			(AppendTo[missle, launcher];
+              			
+       AppendTo[direct, 
+        Normalize[-launcher + MousePosition["Graphics", {0, 0}]]]);
+            		];
+          		If[(*Handle the situate of being hit*)
+            			MemberQ[
+              				Norm[
+                      					# - MousePosition["Graphics", {0, 0}]
+                      				] < crash & /@ missle,
+              			True],
+            			RemoveScheduledTask[ScheduledTasks[]];
+            			
+      CreateDialog[{TextCell["You are hit!", "Title"], 
+        Column@{Row@{"Score: ", score}, Row@{"Passed:", reach}}, 
+        DefaultButton[]}]
+            		];
+          		
+     If[(*If more than reachNum of enermies reach the bottom, 
+      lose the game*)
+            		reach >= reachNum,
+            		RemoveScheduledTask[ScheduledTasks[]];
+            		
+      CreateDialog[{TextCell["You Lost the Base!", "Title"], 
+        Column@{Row@{"Score: ", score}, Row@{"Passed:", reach}}, 
+        DefaultButton[]}]
+            		];
+          
+          		];
+        
+        	1
+        	]);
+  
+  	Panel[ Column@{
+        		
+    Column@{Row@{Text[Style["score: ", Black, 18]], 
+        Text[Style[Dynamic[score], Orange, 16]]},
+            		
+      Row@{Text[Style["passed:", Black, 18]], 
+        Text[Style[Dynamic[reach], Orange, 16]],
+                			Text[Style["/", Orange, 16]], 
+        Text[Style[reachNum, Orange, 16]]},
+            		Button[
+              			Dynamic[If[! stop, "Restart", "Start"]],
+              			RestartAll[];
+              			stop = pausing = False;
+              			score = 0; reach = 0],
+            		Button[
+              			Dynamic[If[! pausing, "Cease", "Resume"]],
+              				If[pausing, pausing = False, pausing = True],
+              				Enabled -> Dynamic[! stop]],
+            		
+      Dynamic[Text[
+        Style[If[! stop, If[! pausing, "fighting", "pausing"], 
+          "Stop"], Black, 16]]]},
+        
+        		MouseAppearance[
+          			EventHandler[
+            				Labeled[Deploy@Framed@Graphics[{
+                      				PointSize[Large],
+                      
+                      				Blue,
+                      				Dynamic[
+                        					
+            Point[(bullet[[All, 2]] += bulletSpeed(*.5*); 
+              bullet = Select[bullet, #[[2]] < 150 &]; bullet)], 
+            TrackedSymbols :> {bullet}(*Handle the bullets*)
+                        				],
+                      
+                      				Red,
+                      				Dynamic[
+                        					Point[
+                          						(
+                            						
+              pos = Position[missle, #] & /@ 
+                Select[missle, #[[1]] < -50 || #[[1]] > 
+                    50 || #[[2]] > 150 || #[[2]] < 10 &, 1];
+                            						If[Length@pos > 0,
+                              						toClean = # & @@ pos;
+                              						(*Print[toClean];*)
+                              						missle = Delete[missle, toClean];
+                              						direct = Delete[direct, toClean]];
+                            						missle += .5 direct)
+                          					],
+                        					
+            TrackedSymbols :> {missle}(*Handle the missles*)
+                        				],
+                      
+                      				
+                      					
+           Dynamic[Thread[Inset[(*Handle the enermy army*)
+                                						Magnify[enermy, .5], #
+                                					] &[
+                            							
+              If[! pausing, 
+               reach += Length@Select[army, #[[2, 2]] < 5 &]];
+                            							
+              army = Select[army, #[[2, 2]] > 5 &];
+                            							
+              army[[All, 2, 2]] -=(*.4*)enermySpeed;
+                            							army[[All, 2]]
+                            						]],
+                        					TrackedSymbols :> {army}]
+                      				
+                      			},
+                    				PlotRange -> {{-50, 50}, {0, 150}},
+                    				ImageSize -> 300
+                    			], 
+       Text[Style["Thunder & Lighting", Darker@Green, Italic, 24]], 
+       Top],
+            		{"MouseClicked" :> {(*Speak["Shu"];*)
+         AppendTo[bullet, 
+          MousePosition[
+           "Graphics", {0, 0}]]}}(*Shoot on Mouse Click Action*)
+            		],
+          		Magnify[jet, .5]
+          			]
+        		}]
+  ]
